@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+
+
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -17,10 +19,15 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import type { Session, LogEntry } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { LiveChart } from './live-chart';
-import { Download, AlertTriangle } from 'lucide-react';
+import { Download, AlertTriangle, Save, Edit, Battery } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { updateBackupBatteryCapacity } from '@/lib/utils';
+import { ref, update } from 'firebase/database';
+import { database } from '@/lib/firebase';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -231,6 +238,9 @@ const generateChartImage = (logs: Record<string, LogEntry> | undefined): string 
 export function HistoryModal({ isOpen, onClose, sessions, portName }: HistoryModalProps) {
   const [formattedSessions, setFormattedSessions] = useState<FormattedSession[]>([]);
   const chartRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [editingCapacity, setEditingCapacity] = useState<string | null>(null);
+  const [capacityInput, setCapacityInput] = useState<string>('');
+  const { toast } = useToast();
 
   useEffect(() => {
     if (isOpen && sessions) {
@@ -265,6 +275,103 @@ export function HistoryModal({ isOpen, onClose, sessions, portName }: HistoryMod
         return 'destructive';
       default:
         return 'secondary';
+    }
+  };
+
+  const handleEditCapacity = (sessionId: string, currentCapacity?: number) => {
+    setEditingCapacity(sessionId);
+    setCapacityInput(currentCapacity ? currentCapacity.toString() : '');
+  };
+
+  const handleCancelCapacityEdit = () => {
+    setEditingCapacity(null);
+    setCapacityInput('');
+  };
+
+  const handleSaveCapacity = async (sessionId: string, portId: string, batteryType: string) => {
+    if (!capacityInput.trim()) return;
+    
+    // Parse the input and detect units
+    const input = capacityInput.trim().toLowerCase();
+    let capacity: number;
+    
+    // Check if input contains "mah" or "ah"
+    if (input.includes('mah')) {
+      const match = input.match(/(\d+(?:\.\d+)?)/);
+      if (!match) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Input',
+          description: 'Please enter a valid number followed by mAh (e.g., 2200 mAh)',
+        });
+        return;
+      }
+      capacity = parseFloat(match[1]) / 1000; // Convert mAh to Ah
+    } else if (input.includes('ah')) {
+      const match = input.match(/(\d+(?:\.\d+)?)/);
+      if (!match) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Input',
+          description: 'Please enter a valid number followed by Ah (e.g., 2.2 Ah)',
+        });
+        return;
+      }
+      capacity = parseFloat(match[1]);
+    } else {
+      // No unit specified, assume mAh for user convenience
+      const rawValue = parseFloat(input);
+      if (rawValue <= 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Input',
+          description: 'Capacity must be a positive number',
+        });
+        return;
+      }
+      capacity = rawValue / 1000; // Convert to Ah
+    }
+    
+    if (isNaN(capacity) || capacity <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Capacity',
+        description: `Please enter a valid positive number. You entered: ${capacityInput}`,
+      });
+      return;
+    }
+
+    try {
+      // Update the session with the new capacity
+      const sessionRef = ref(database, `ports/${portId}/sessions/${sessionId}`);
+      await update(sessionRef, {
+        ratedCapacity: capacity
+      });
+
+      // Update the backup battery capacity table
+      await updateBackupBatteryCapacity(
+        database,
+        portId,
+        capacity
+      );
+
+      toast({
+        title: 'Capacity Updated',
+        description: `Capacity updated to ${capacity.toFixed(3)} Ah for session ${sessionId}`,
+      });
+
+      setEditingCapacity(null);
+      setCapacityInput('');
+      
+      // Refresh the sessions data
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to save capacity:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: 'Failed to update capacity. Please try again.',
+      });
     }
   };
 
@@ -343,16 +450,16 @@ export function HistoryModal({ isOpen, onClose, sessions, portName }: HistoryMod
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[700px] h-[90vh] flex flex-col !translate-y-0 !top-4 !bottom-4 !translate-x-[-50%] !left-[50%]">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="font-headline">{portName} - Session History</DialogTitle>
-          <DialogDescription>
-            Review past charging and discharging sessions. Click a session to see its graph or download a report.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-hidden mt-4">
-          <div className="h-full w-full pr-4 overflow-y-auto">
-            <Accordion type="single" collapsible className="w-full">
+        <DialogContent className="max-w-[95vw] sm:max-w-[700px] h-[90vh] flex flex-col !translate-y-0 !top-4 !bottom-4 !translate-x-[-50%] !left-[50%]">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="font-headline">{portName} - Session History</DialogTitle>
+            <DialogDescription>
+              Review past charging and discharging sessions. Click a session to see its graph or download a report.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden mt-4">
+            <div className="h-full w-full pr-4 overflow-y-auto">
+              <Accordion type="single" collapsible className="w-full">
               {formattedSessions.length > 0 ? (
                 formattedSessions.map((session) => (
                   <AccordionItem value={session.id} key={session.id} className="border-b">
@@ -360,14 +467,131 @@ export function HistoryModal({ isOpen, onClose, sessions, portName }: HistoryMod
                       <div className="flex justify-between items-center w-full pr-4">
                         <div className="flex flex-col text-left">
                           <span className="font-semibold">{session.formattedStartTime}</span>
-                          <span className="text-sm text-muted-foreground">{session.batteryType || 'N/A'}</span>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-sm text-muted-foreground">{session.batteryType || 'N/A'}</span>
+                            <div className="w-px h-4 bg-border"></div>
+                            <Badge 
+                              variant={session.type === 'discharging' ? 'destructive' : session.type === 'charging' ? 'default' : 'secondary'} 
+                              className="capitalize text-xs font-medium px-2 py-1 shadow-sm"
+                            >
+                              {session.type === 'discharging' ? '⚡ Discharging' : session.type === 'charging' ? '🔋 Charging' : '⏸️ Resting'}
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="no-underline">
+                        <div>
                           <Badge variant={getStatusBadgeVariant(session.status)} className="capitalize">{session.status || 'Unknown'}</Badge>
                         </div>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4 space-y-4">
+                      {/* Session Info and Capacity Management */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Battery Type:</span>
+                            <span className="text-sm">{session.batteryType || 'Not set'}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Rated Capacity:</span>
+                            {editingCapacity === session.id ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="text"
+                                  value={capacityInput}
+                                  onChange={(e) => setCapacityInput(e.target.value)}
+                                  placeholder="e.g., 2200 mAh or 2.2 Ah"
+                                  className="h-8 text-xs w-32"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveCapacity(session.id, portName.replace('Port ', 'port_'), session.batteryType || 'LiPo')}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  <Save className="h-3 w-3 mr-1" />
+                                  Save
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleCancelCapacityEdit}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">
+                                  {session.ratedCapacity ? `${session.ratedCapacity} Ah` : 'Not set'}
+                                </span>
+                                {session.type === 'discharging' && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleEditCapacity(session.id, session.ratedCapacity)}
+                                    className="h-6 px-1 text-xs"
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {session.type === 'discharging' && !session.ratedCapacity && (
+                            <p className="text-xs text-blue-600">
+                              💡 Set rated capacity to enable SOH calculation for this discharge session
+                            </p>
+                          )}
+                          {session.type === 'discharging' && session.ratedCapacity && !session.finalSOH && (
+                            <p className="text-xs text-orange-600">
+                              ⚠️ SOH calculation requires completed discharge session with sufficient data
+                            </p>
+                          )}
+                        </div>
+                                                <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Status:</span>
+                            <Badge variant={getStatusBadgeVariant(session.status)} className="capitalize text-xs">
+                              {session.status || 'Unknown'}
+                            </Badge>
+                          </div>
+                          {session.type === 'discharging' && session.finalSOH && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">SOH:</span>
+                              <Badge variant="outline" className="text-xs font-mono">
+                                {session.finalSOH.toFixed(1)}%
+                              </Badge>
+                            </div>
+                          )}
+                          {session.type === 'discharging' && session.finalMeasuredCapacity && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">Measured Capacity:</span>
+                              <span className="text-sm font-mono">
+                                {session.finalMeasuredCapacity.toFixed(3)} Ah
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {session.type === 'discharging' && session.finalSOH && (
+                        <div className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 p-3 text-green-800 text-sm">
+                          <span className="text-lg">🔋</span>
+                          <div className="flex-1">
+                            <p className="font-medium">Discharge Session Results</p>
+                            <div className="flex items-center gap-4 mt-1 text-xs">
+                              <span><strong>SOH:</strong> {session.finalSOH.toFixed(1)}%</span>
+                              {session.finalMeasuredCapacity && (
+                                <span><strong>Measured Capacity:</strong> {session.finalMeasuredCapacity.toFixed(3)} Ah</span>
+                              )}
+                              {session.ratedCapacity && (
+                                <span><strong>Rated Capacity:</strong> {session.ratedCapacity.toFixed(3)} Ah</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
                       {session.notes && (
                           <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800 text-sm">
                               <AlertTriangle className="h-5 w-5" />

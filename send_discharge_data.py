@@ -59,7 +59,9 @@ def main():
         'startTime': start_timestamp,
         'endTime': None,
         'status': 'discharging',
+        'type': 'discharging',  # Current battery state: charging, discharging, or resting
         'batteryType': 'LiPo',
+        'ratedCapacity': 2.2,  # 2.2 Ah rated capacity
         'currentVoltage': 0.0,
         'currentCurrent': 0.0,
         'logs': {}
@@ -105,7 +107,8 @@ def main():
         end_time = int(time.time() * 1000)
         session_ref.update({
             'status': 'completed',
-            'endTime': end_time
+            'endTime': end_time,
+            'type': 'discharging'  # Preserve the type field for capacity calculation
         })
         # Clear the current session for the port
         port_ref.update({'currentSessionId': None})

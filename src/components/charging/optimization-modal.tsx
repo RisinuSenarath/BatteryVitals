@@ -44,6 +44,16 @@ export function OptimizationModal({ isOpen, onClose, session, portName }: Optimi
         return;
       }
 
+      if (!session.batteryType) {
+        toast({
+          variant: 'destructive',
+          title: 'Missing Battery Type',
+          description: 'Please set the battery type before running optimization.',
+        });
+        setLoading(false);
+        return;
+      }
+
       const response = await optimizeChargingParameters({
         portName: portName,
         batteryType: session.batteryType,
@@ -79,7 +89,11 @@ export function OptimizationModal({ isOpen, onClose, session, portName }: Optimi
             <Bot className="text-primary" /> AI Battery Optimization
           </DialogTitle>
           <DialogDescription>
-            Let AI analyze the current session data to suggest optimal battery parameters for future use.
+            {!session.batteryType ? (
+              <span className="text-destructive">⚠️ Please set the battery type first to enable AI optimization.</span>
+            ) : (
+              'Let AI analyze the current session data to suggest optimal battery parameters for future use.'
+            )}
           </DialogDescription>
         </DialogHeader>
         
@@ -112,8 +126,8 @@ export function OptimizationModal({ isOpen, onClose, session, portName }: Optimi
         
         <DialogFooter>
           {!result && !loading && (
-             <Button onClick={handleOptimize} disabled={loading} className="w-full">
-               Optimize Now
+             <Button onClick={handleOptimize} disabled={loading || !session.batteryType} className="w-full">
+               {!session.batteryType ? 'Set Battery Type First' : 'Optimize Now'}
             </Button>
           )}
            {result && !loading && (

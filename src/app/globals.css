@@ -85,4 +85,78 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Remove all underlining from the entire web application */
+  * {
+    text-decoration: none !important;
+  }
+  
+  /* Ensure no underlining on any elements */
+  a, span, div, p, h1, h2, h3, h4, h5, h6, button, input, textarea, select, label, badge, .badge {
+    text-decoration: none !important;
+  }
+  
+  /* Override any component-specific underlining */
+  [data-radix-accordion-trigger] *,
+  [data-radix-accordion-trigger] span,
+  [data-radix-accordion-trigger] div,
+  [data-radix-accordion-trigger] button,
+  [data-radix-accordion-trigger] .badge {
+    text-decoration: none !important;
+  }
+  
+  /* Remove underlining from all interactive elements */
+  button:hover, button:focus,
+  a:hover, a:focus,
+  input:hover, input:focus,
+  textarea:hover, textarea:focus {
+    text-decoration: none !important;
+  }
+}
+
+/* Global CSS overrides */
+* {
+  text-decoration: none !important;
+}
+
+/* Optimize for real-time updates to reduce flickering */
+.port-card {
+  contain: layout style paint;
+  will-change: auto;
+}
+
+.live-chart {
+  contain: layout style paint;
+  will-change: auto;
+}
+
+/* Smooth transitions for battery metrics */
+.battery-metrics {
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Prevent layout shifts during updates */
+.metrics-container {
+  min-height: 2rem;
+  contain: layout;
+}
+
+/* Optimize chart rendering */
+.recharts-wrapper {
+  contain: layout style paint;
+  will-change: auto;
+}
+
+/* Smooth loading states */
+.loading-skeleton {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
 }
