@@ -4,7 +4,7 @@ const ports = [
   { id: 'port_1', name: 'Port 1' },
   { id: 'port_2', name: 'Port 2' },
   { id: 'port_3', name: 'Port 3' },
-  { id: 'lead_acid', name: 'Port 4' },
+  { id: 'lead_acid', name: 'Port 42' },
 ];
 
 export default function ChargingDashboard() {
